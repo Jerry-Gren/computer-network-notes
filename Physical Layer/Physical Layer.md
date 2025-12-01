@@ -259,11 +259,16 @@ QAM-16有16种不同的symbol, 所以每个symbol可以携带4个bit. QAM-64有6
 
 ### Multiplexing
 
+FDMA/TDMA 是 带宽受限（Bandwidth-limited） 的：频率切完了就没法加人了
+CDMA 是 干扰受限（Interference-limited） 的：理论上可以一直加用户，但用户越多，背景“噪声”底噪就越高，直到信噪比（SNR）低到无法解调为止。
+
 #### FDM
 
 放到不同的频段上传输, 它们之间有隔离, 避免造成干扰 (interference)
 
 ![alt text](img/fdm.png)
+
+WDM和FDM实际上是一回事
 
 #### OFDM (Orthogonal FDM)
 
@@ -284,3 +289,161 @@ Sum rate: 为了保证传输速率, 这个信道的数据传输速率至少是�
 ![alt text](img/tdm.png)
 
 #### CDM
+
+In CDMA, each bit time is subdivided into m short intervals called
+chips.
+
+每个bit，都用多个chips表示，一般来说m取64或128
+
+chips的频率比bits快，会导致所需带宽增大
+
+Each station has its own unique chip sequence - Walsh codes
+
+但是，如果每个Station有自己的chip sequence，并且相互之间正交，那么每个人都可以使用这个信道，并且他们之间的干扰会降到最低（相比FDM，可以将信号能量扩散到更宽的频带上，使得信号抗干扰能力极强）
+
+对于接收者来说，其他用户的信号看起来就像背景白噪声。只有用正确的码（例如Gold codes和Walsh codes）去解调，才能从中提取出有用的信号
+
+CDM和TDM一样需要注意时间同步的问题
+
+![alt text](img/cdm.png)
+
+上图，A、B、C、D表示四个Station，它们分别有自己的chip sequence，分别正交（看成向量，相乘为0）。当发送这个sequence时表示发送了bit 1，发送这个sequence的补码时表示发送了bit 0。S表示某一时刻信道中实际存在的混合信号总和
+
+## Three Communication Examples 三个实际例子
+
+### Public Switch Telephone Network (PSTN) 电话网络
+
+![alt text](img/pstn-components.png)
+
+PSTN有以上三个主要的部分组成
+
+#### Local Loops 本地环路
+
+![alt text](img/local-loops.png)
+
+这里特别做一个铺垫，为了无损地还原一个模拟信号，采样频率（Sampling Frequency, $f_s$​）必须至少是该信号最高频率$f_{max}$​的两倍。这就是Nyquist Sampling Limit，注意与Nyquist Bandwidth的区别。一旦采样率达到了$2f_{max}$​，就已经在数学上捕获了该信号的全部信息，因此再继续提高采样率，还原出来的波形也是完全一样的。但是一旦低于$2f_{max}$​，原始波形的信息就永久丢失了。现实中的信号一般是时限的，因此总是会有无穷大的频率分量。所以在采样之前，我们必须先把信号通过一个低通滤波器（Low Pass Filter），强行把高频部分切掉，把信号变成了Bandlimited带限信号，然后再采样。如果不切掉高频，它们就会折叠回来变成噪声。
+
+人说话的声音主要集中在300Hz ~ 3400Hz之间，为了保留guard bands，电信业将话音信号的有效带宽定为4000Hz。根据定理，采样频率必须是最高频率的2倍，因此现代数字电话系统（PCM）的标准采样率是8000Hz。
+
+The number of bits per sample in the U.S. is 8, one of which may be used for control purposes, allowing 56 kbps for user data. In Europe, all 8 bits are available to users, so 64 kbps modems could have been used.
+
+这段话就很容易理解了。注意，采样（8000 samples/sec）+量化（7 bits/sample还是8 bits/sample），缺一不可。
+
+![alt text](img/pstn-adsl.png)
+
+上面这张图说明了Local Loop频谱划分的情况。总共1.1MHz，分为256份，每一个信道大约4kHz，这和OFDM是比较类似的（也可以叫DMT）。特别注意，1-5是不使用的，防止数据干扰语音。另外，用于upstream的信道数量少于downstream，因为一般下载的需求大于上传。以下是一个简易的图解：
+
+![alt text](img/pstn-adsl-conf.png)
+
+现在，老的铜缆Local Loop限制了ADSL和电话调制解调器的性能，因此有了光纤入户。通常情况下，来自各户的光纤会汇合在一起，这样每组最多 100 户人家只有一根光纤到达终端局。在下行方向上，optical splitter将终端局发出的信号分成两路，以便每户人家都能接收到信号。只有一户人家能够解码自己的信号，需要加密以确保安全。在上行方向上，optical combiner将来自各户人家的信号合并成一个单一信号，该信号到达终端局。为了防止上行和下行打架，两者使用不同波长的光（即频率不同，FDM）。
+
+![alt text](img/pstn-fiber.png)
+
+图中间的Optical splitter/combiner是一个纯物理的光学玻璃器件，不需要插电，是无源的，因此这个网络是PON (Passive Optical Network，无源光网络)，这是目前全世界光纤入户的主流标准。
+
+#### Trunks 主干网
+
+Trunks比Local Loops速度快很多，除此之外，还有这两个区别：
+
+1. 传输bits，而不是声音
+2. 可以同时承载成千上万甚至数百万个通话，通常使用TDM和FDM
+
+在电话网络发展的早期，Trunk以模拟信息的形式处理语音call。FDM技术就用于将4000 Hz的语音信道复用成越来越大的单元。例如，60 kHz至108 kHz频段内的12个call称为一个group，5个组（共60个call）称为一个supergroup，以此类推，越来越粗
+
+FDM需要模拟电路，TDM则可以完全由数字电路实现
+
+![alt text](img/pstn-t1.png)
+
+上图展示了非常经典的T1载波（T1 Carrier）标准。使用TDM技术，把时间切片，轮流发24个人的数据，每个信道在每次采样中分配 8 bit。最开头还有一个framing bit，为了让接收端知道这一帧是从哪里开始的。语音必须每 125 μsec（1/8000kHz）采样一次，所以帧长被固定在 125 μsec。每帧$1+24\times8=193$ bits，因此速率为$193$ bits / $125$ μsec $=1.544$ Mbps
+
+![alt text](img/pstn-t1-more.png)
+
+上图展示了，在T1载波的基础上，可以进一步使用TDM将多个T1stream合并，以此类推。由于加入了一些控制字节，因此总是会比整倍数大一点。
+
+在T1标准之后，Bellcore 提出了 SONET 标准，国际上对应的标准为 SDH。和T1一样，也是靠切分时间片来传输数据的，但它是二维的切分。
+
+![alt text](img/pstn-sonet.png)
+
+SONET的一帧是一个9行×90列的字节矩阵，总大小为$9\times90=810$ bytes$=810\times8$ bits$=6480$ bits。据此，就可以计算SONET的基础速率为$6480$ bits / $125$ μsec $=51.84$ Mbps
+
+#### Switching 电路交换
+
+Circuit Switching：通话建立后，两端之间便会建立一条专用的物理路径，该路径将持续存在直至通话结束。发送任何数据之前，都需要建立端到端的路径。数据的唯一延迟是电磁信号的传播时间，这个延迟是极短的，约为每1000公里5毫秒。
+
+Packet Switching：不需要预先设置专用路径，也没有固定路径，路由器负责将每个数据包单独发送到目的地。数据包大小有上限。存在排队延迟和拥塞的问题（两个包同时走同一个路径）。
+
+虽然两者在当今的电信网络中都很普遍，但趋势无疑是朝着Packet Switching的方向发展
+
+![alt text](img/pstn-switching-compare.png)
+
+下面两个简单的问题中就可以看出Packet Switching的优势：
+
+![alt text](img/pstn-switching-question-1.png)
+
+![alt text](img/pstn-switching-question-2.png)
+
+### Cellular Networks 蜂窝网络
+
+![alt text](img/cellular-concept.png)
+
+邻接的7个cell都使用不同的频段。在人员流动非常大的地方，应当继续把大的cell划分为更小的cell
+
+![alt text](img/cellular-shape.png)
+
+为什么不使用其他形状？
+
+理论上，基站的全向天线发出的信号是向四面八方传播的，覆盖范围最自然的形状是圆形。但是，如果用圆去覆盖一个城市，要么产生大量重叠，导致严重的同频干扰，要么有大量空隙，导致信号盲区。
+
+而正方形邻居的距离差异很大，正六边形是各向同性的。
+
+以2G网络的基础GSM为例：
+
+![alt text](img/cellular-gsm-channel.png)
+
+![alt text](img/cellular-gsm-frame.png)
+
+可以自行进行验算
+
+![alt text](img/cellular-cdma.png)
+
+CDMA中有一个Soft Handoff机制，在移动通信中，当从一个基站覆盖区移动到另一个基站覆盖区时，通话链路必须转移。
+
+硬切换 (Hard Handoff): (如 GSM) 是“先断后通”。就像你荡秋千换手抓杠，必须先松开一只手，瞬间腾空，再抓另一只。如果抓慢了，通话就断了。
+
+软切换 (Soft Handoff): (如 CDMA) 是“先通后断”。就像你此时两只手同时抓着两个杠子，确信抓稳了新的，才松开旧的。
+
+GSM (及 FDMA/TDMA): 相邻的基站为了防止干扰，必须使用不同的频率。手机只有一个无线电收发器，不可能同时工作在两个不同的频率上。所以它必须切断旧频率，调整电路，再接入新频率。这就导致了“硬切换”。
+
+CDMA: 所有基站都使用相同的频率（通过不同的“码”来区分）。因为频率一样，手机的无线电模块可以毫不费力地同时接收来自两个、甚至三个基站的信号。
+
+### Cable Networks 有线电视网络
+
+早期的有线电视系统，单向传输：
+
+![alt text](img/cable-network.png)
+
+如今的有线电视系统：
+
+光纤提供更大的带宽。需要用双向amplifier替换单向的，以支持上行和下行传输
+
+![alt text](img/cable-hfc.png)
+
+为了允许电视信号和网络信号在同一根线上传输，使用FDM：
+
+上行和下行的带宽是非对称的
+
+![alt text](img/cable-fdm.png)
+
+主要的协议是DOCSIS（Data Over Cable Service Interface Specification）
+
+![alt text](img/cable-docsis.png)
+
+下行没有collision，因为只有一个发送者即headend；而上行有，因为有很多个用户共用这一根线发数据
+
+ADSL（电话线上网） vs. Cable（有线电视线上网）哪个更好？
+
+Cable: 使用同轴电缆 (Coax)，抗干扰能力强，频带极宽，理论传输能力是双绞线的几百倍
+
+ADSL: 使用双绞线 (Twisted pair)，它是为了传模拟语音设计的，并没有打算用来传高速数据，抗干扰差，物理上限很低
+
+虽然同轴电缆带宽大，但它的大部分空间已经被拿去传电视信号了，所以两者没有好坏之分
